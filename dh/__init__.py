@@ -55,7 +55,9 @@ generator = 2
 # Returns (public, private)
 def create_dh_key():
     # private key - a randomly generated integer between 2 and the length of the prime in integer form
-    private_key = random.randint(2, len(str(prime)))
+    # private_key = random.randint(2, len(str(prime)))
+    
+    private_key = random.getrandbits(256); #https://crypto.stackexchange.com/questions/1975/what-should-be-the-size-of-a-diffie-hellman-private-key
 
     # public key - generated from  (generator**private_key) % prime 
     public_key = pow(generator, private_key, prime)
