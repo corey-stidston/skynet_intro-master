@@ -1,6 +1,5 @@
 from Crypto.Hash import SHA256
 from Crypto.Random import random
-
 from lib.helpers import read_hex
 
 # Project TODO: Is this the best choice of prime? Why? Why not? Feel free to replace!
@@ -56,14 +55,52 @@ generator = 2
 def create_dh_key():
     # private key - a randomly generated integer between 2 and the length of the prime in integer form
     # private_key = random.randint(2, len(str(prime)))
+
+    #https://security.stackexchange.com/questions/112313/what-is-the-current-security-status-of-diffie-hellman-key-exchange
+    #https://crypto.stackexchange.com/questions/1975/what-should-be-the-size-of-a-diffie-hellman-private-key
+
+    #  The exponent size used in the Diffie-Hellman must be selected so that
+    # it matches other parts of the system.  It should not be the weakest
+    # link in the security system.  It should have double the entropy of
+    # the strength of the entire system
+    # Therefore - for a security strength of 128 bits, you must use more than 256 bits of randomness
+    # in the exponent used in the Diffie-Hellman calculation.
+
+    # +--------+----------+---------------------+---------------------+
+    # | Group  | Modulus  | Strength Estimate 1 | Strength Estimate 2 |
+    # |        |          +----------+----------+----------+----------+
+    # |        |          |          | exponent |          | exponent |
+    # |        |          | in bits  | size     | in bits  | size     |
+    # +--------+----------+----------+----------+----------+----------+
+    # |  16    | 4096-bit |      150 |     300- |      240 |     480- |
+    # +--------+----------+---------------------+---------------------+
     
-    private_key = random.getrandbits(256); #https://crypto.stackexchange.com/questions/1975/what-should-be-the-size-of-a-diffie-hellman-private-key
+    # X9.42 requires that the private key x be in the interval [2, (q - 2)].  x should be randomly generated in this interval.
 
-    # public key - generated from  (generator**private_key) % prime 
+    # X9.42 requires that the group parameters be of the form p=jq + 1where q is a large prime of length m and j>=2.
+    # p = jq + 1
+    # q = p - 1 / j
+
+    # other implementation:
+    j = random.getrandbits(160)
+    while(True):
+      if(j <= 2):
+        j = random.getrandbits(160)
+      else:
+        break
+
+    q = prime - 1 // j 
+    private_key = random.randint(2, q-2) 
+
+    # print(sys.getsizeof(q))
+    # print(sys.getsizeof(private_key))
+
+    #private_key = random.getrandbits(256) #390 to satisfy exponent size? | #512 for AES level security?
+
     public_key = pow(generator, private_key, prime)
-
     return (public_key, private_key)
 
+# Returns a Key Encryption Key which can be used to compute other settings
 def calculate_dh_secret(their_public, my_private):
     # Calculate the shared secret
     shared_secret = pow(their_public, my_private, prime)
