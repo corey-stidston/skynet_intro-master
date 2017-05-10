@@ -1,10 +1,12 @@
 import struct
 import time
-from Crypto.Cipher import XOR
+from Crypto.Hash import HMAC
+from Crypto.Hash import SHA256
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from . import crypto_utils
 from dh import create_dh_key, calculate_dh_secret
+import sys
 
 class StealthConn(object):
     def __init__(self, conn, client=False, server=False, verbose=False):
@@ -12,13 +14,13 @@ class StealthConn(object):
         self.cipher = None
         self.client = client
         self.server = server
+        self.shared_hash = None
         self.verbose = verbose
         self.initiate_session()
 
     def initiate_session(self):
         # Perform the initial connection handshake for agreeing on a shared secret 
 
-        ### TODO: Your code here!
         # This can be broken into code run just on the server or just on the client
         if self.server or self.client:
             my_public_key, my_private_key = create_dh_key()
@@ -27,28 +29,27 @@ class StealthConn(object):
             # Receive their public key
             their_public_key = int(self.recv())
             # Obtain our shared secret
-            shared_hash = calculate_dh_secret(their_public_key, my_private_key)
-            #print("Shared hash: {}".format(shared_hash))
-            
-            # my code
-            initialisation_vector = shared_hash[-16:]
-            self.cipher = AES.new(shared_hash[:32], AES.MODE_CBC, initialisation_vector)
+            self.shared_hash = calculate_dh_secret(their_public_key, my_private_key)
+            print("Shared hash: {}".format(self.shared_hash))
+            #print("Shared hash length: {}".format(len(self.shared_hash)))
 
-            # other method - Counter Mode
-            #ctr = Counter.new(128, initial_value="Randomint")
-            #self.cipher = AES.new(shared_hash[:32], AES.MODE_CTR, ctr) # cipher block chaining
+            # Create initialisation vector from the last 16 characters of the shared hash
+            initialisation_vector = self.shared_hash[-16:]
+            # Create new AES instance, using first 32 characters of the shared hash
+            self.cipher = AES.new(self.shared_hash[:16], AES.MODE_CBC, initialisation_vector)
             
-
-        # Default XOR algorithm can only take a key of length 32
-        # self.cipher = XOR.new(shared_hash[:4]) #<----------CHANGE / REMOVE THIS
 
     def send(self, data):
         if self.cipher:
+            # Append the timestamp to the packet as an integer
             container = b"".join([data, struct.pack(">i", int(time.time()))])
-
-            padded_message = crypto_utils.ANSI_X923_pad(container, self.cipher.block_size) #self.cipher.block_size
-            
-            #encrypt entire message
+            # Calculate the Hash
+            hmac = HMAC.new(self.shared_hash.encode(), container, SHA256).digest()
+            # Append the the HMAC to the container
+            outer_container = b"".join([container, hmac])
+            # Pad the message with the correct blocksize for AES
+            padded_message = crypto_utils.ANSI_X923_pad(outer_container, self.cipher.block_size)
+            # Encrypt entire message
             encrypted_data = self.cipher.encrypt(padded_message)
 
             if self.verbose:
@@ -71,17 +72,35 @@ class StealthConn(object):
 
         encrypted_data = self.conn.recv(pkt_len)
         if self.cipher:
+            # Decrypt the message into an unpadded form
+            decrypted_message = self.cipher.decrypt(encrypted_data)
+            # Unpad the message
+            outer_container = crypto_utils.ANSI_X923_unpad(decrypted_message, self.cipher.block_size)
+            # Extract the hmac
+            hmac = outer_container[-SHA256.digest_size:]
+            # Deconstruct the packet
+            container = outer_container[:-SHA256.digest_size]
+            # Calculate hmac
+            calculated_hmac = HMAC.new(self.shared_hash.encode(), container, SHA256).digest()
+            if calculated_hmac != hmac:
+                print("****WARNING: MESSAGE INTEGRITY ATTACK DETECTED****")
+                # Do something about integrity attack
+                # ignore message etc
+                # close connection etc..
+            #else:
+                #print("HMACS ARE EQUAL")
 
-            #decrypt the message into unpadded form
-            unpadded_message = self.cipher.decrypt(encrypted_data)
-            #unpad the message
-            container = crypto_utils.ANSI_X923_unpad(unpadded_message, self.cipher.block_size)
-            packet_time = struct.unpack(">i", container[-4:])[0]
+            # Extract the timestamp
+            timestamp = struct.unpack(">i", container[-4:])[0]
             
-            if(time.time() - packet_time > 10):
-                print("\nWARNING: REPLAY ATTACK DETECTED")
-                
+            # Ensure the timestamp is within a reasaonable time period (10 seconds)
+            if(time.time() - timestamp > 10):
+                print("****WARNING: REPLAY ATTACK DETECTED****")
+                # Do something about replay attack
+                # ignore message
+                # close connection etc..
 
+            # Extract the data
             data = container[:-4]
 
             if self.verbose:
