@@ -41,18 +41,10 @@ generator = 2
 # Returns (public, private)
 def create_dh_key():
 
-    # Obtain a large integer j whose value is >= 2
-    j = random.getrandbits(160) #Length of integer q ‘m’ MUST be >=160 bits in length
-    while(True):
-      if(j <= 2):
-        j = random.getrandbits(160)
-      else:
-        break
-
-    # p = jq + 1
-    # Re-arranged to:
+    # Re-arranged to: (where j = 2)
     # q = p - 1 / j
-    q = prime - 1 // j
+    # // - Floored to avoid OverflowError
+    q = (prime - 1) // 2
 
     # Obtain a pivate key in the range [2:q-2]
     private_key = random.randint(2, q-2) 
