@@ -1,5 +1,24 @@
-Welcome to SkyNet - Corey Stidston
+Welcome to SkyNet
 =================
+
+Problems with Part1:
+
+- Protection against Replay Attacks
+
+	"You really shouldn't be using timestamp.
+
+	In practice, this is difficult to do properly:
+
+	Need to account for timezone correctly especially during the session init
+	The times on the machine need to be synced correctly
+	Account for latency (which you did by having a window)
+	But, you could still have a window for replay attacks
+	However, you protected your timestamp so that makes this whole situation better.
+
+	(-0.5)
+
+	What you want to do is to use a stream of unpredictable counters.
+	i.e. seed a cryptographically secure pseudorandom number generator with some unused shared_secret and increment the counter by the next random value you get from it."
 
 
 
