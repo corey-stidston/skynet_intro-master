@@ -43,8 +43,8 @@ class StealthConn(object):
         if self.cipher:
             # Append the timestamp to the packet as an integer
             container = b"".join([data, struct.pack(">i", int(time.time()))])
-            # Calculate the Hash
-            hmac = HMAC.new(self.shared_hash.encode(), container, SHA256).digest()
+            # Calculate the Hash, (Now uses middle 32 bits of shared hash)
+            hmac = HMAC.new(self.shared_hash[16:-16].encode(), container, SHA256).digest()
             # Append the the HMAC to the container
             outer_container = b"".join([container, hmac])
             # Pad the message with the correct blocksize for AES
@@ -80,8 +80,8 @@ class StealthConn(object):
             hmac = outer_container[-SHA256.digest_size:]
             # Deconstruct the packet
             container = outer_container[:-SHA256.digest_size]
-            # Calculate hmac
-            calculated_hmac = HMAC.new(self.shared_hash.encode(), container, SHA256).digest()
+            # Calculate hmac (Now uses middle 32 bits of shared hash)
+            calculated_hmac = HMAC.new(self.shared_hash[16:-16].encode(), container, SHA256).digest()
             if calculated_hmac != hmac:
                 print("****WARNING: MESSAGE INTEGRITY ATTACK DETECTED****")
                 # Do something about integrity attack
