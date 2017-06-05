@@ -1,5 +1,4 @@
 import os
-import sys
 from generate_keys import generate_keys
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
